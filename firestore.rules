@@ -1,0 +1,98 @@
+rules_version = '2';
+
+// Règles de sécurité — Billetterie Save Life
+// Modèle : la sécurité repose entièrement sur ces règles + des jetons aléatoires.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function roleOf() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function hasUserDoc() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return signedIn() && hasUserDoc() && roleOf() == 'admin';
+    }
+
+    function isGenerator() {
+      return signedIn() && hasUserDoc() && (roleOf() == 'generator' || roleOf() == 'admin');
+    }
+
+    function isVerifier() {
+      return signedIn() && hasUserDoc() && (roleOf() == 'verifier' || roleOf() == 'admin');
+    }
+
+    function isStaff() {
+      return signedIn() && hasUserDoc() &&
+        (roleOf() == 'admin' || roleOf() == 'generator' || roleOf() == 'verifier');
+    }
+
+    // ---- Utilisateurs ----
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+
+      // À l'inscription : l'utilisateur ne peut créer QUE son propre profil en "pending".
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role == 'pending';
+
+      // Seul un admin peut modifier les rôles. (Empêche l'auto-élévation de privilèges.)
+      allow update: if isAdmin()
+        && request.resource.data.role in ['pending', 'verifier', 'generator', 'admin'];
+
+      allow delete: if isAdmin();
+    }
+
+    // ---- Lots d'import ----
+    match /batches/{batchId} {
+      allow read: if isStaff();
+      allow create: if isGenerator()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // ---- Billets ----
+    match /tickets/{ticketId} {
+      allow read: if isStaff();
+
+      allow create: if isGenerator()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'valid'
+        && request.resource.data.scanCount == 0
+        && request.resource.data.secret is string
+        && request.resource.data.category in ['PRESTIGE_VVP', 'VP', 'SOLIDAIRE'];
+
+      // Scan : un vérificateur ne peut QUE consommer le billet.
+      // Les champs d'identité sont immuables, le compteur ne fait qu'augmenter de 1,
+      // et le statut ne peut que rester ou passer à 'used'.
+      allow update: if isVerifier()
+        && request.resource.data.secret == resource.data.secret
+        && request.resource.data.holderName == resource.data.holderName
+        && request.resource.data.category == resource.data.category
+        && request.resource.data.batchId == resource.data.batchId
+        && request.resource.data.reference == resource.data.reference
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.scanCount == resource.data.scanCount + 1
+        && (request.resource.data.status == 'used'
+            || request.resource.data.status == resource.data.status);
+
+      allow delete: if isAdmin();
+
+      // ---- Journal des scans (append-only) ----
+      match /scans/{scanId} {
+        allow read: if isStaff();
+        allow create: if isVerifier()
+          && request.resource.data.by == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
