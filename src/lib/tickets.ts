@@ -14,6 +14,7 @@ export interface NewTicketInput {
 export const TICKET_PREVIEW_LIMIT = 120
 
 const SUPABASE_INSERT_LIMIT = 500
+const SUPABASE_SELECT_PAGE_SIZE = 1000
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -194,15 +195,24 @@ export async function createBatchWithTickets(
   return { batchId, tickets: prepared }
 }
 
-export async function getTicketsByBatch(batchId: string): Promise<Ticket[]> {
-  const { data, error } = await supabase
-    .from('tickets')
-    .select(ticketColumns())
-    .eq('batch_id', batchId)
-    .order('reference', { ascending: true })
+export async function getTicketsByBatch(
+  batchId: string,
+  onProgress?: (loaded: number) => void,
+): Promise<Ticket[]> {
+  const tickets: Ticket[] = []
 
-  if (error) throw error
-  return ((data || []) as unknown as DbTicket[]).map(toTicket)
+  for (let offset = 0; ; offset += SUPABASE_SELECT_PAGE_SIZE) {
+    const page = await getTicketsByBatchPage(
+      batchId,
+      offset,
+      SUPABASE_SELECT_PAGE_SIZE,
+    )
+    tickets.push(...page)
+    onProgress?.(tickets.length)
+    if (page.length < SUPABASE_SELECT_PAGE_SIZE) break
+  }
+
+  return tickets
 }
 
 export async function getTicketsByBatchPreview(

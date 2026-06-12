@@ -93,18 +93,18 @@ export async function renderTicketCanvas(
     color: { dark: "#111111", light: "#ffffff" },
   });
 
-  const pad = Math.round(qrSize * 0.12);
+  const pad = Math.max(6, Math.round(qrSize * 0.035));
   const bgSize = qrSize + pad * 2;
   const bgX = cfg.qr.cx - bgSize / 2;
   const bgY = cfg.qr.cy - bgSize / 2;
 
   // Fond blanc arrondi (zone de silence pour garantir la lisibilité du QR).
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.25)";
-  ctx.shadowBlur = 14;
-  ctx.shadowOffsetY = 4;
+  ctx.shadowColor = "rgba(0,0,0,0.16)";
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 2;
   ctx.fillStyle = "#ffffff";
-  roundRect(ctx, bgX, bgY, bgSize, bgSize, Math.round(bgSize * 0.1));
+  roundRect(ctx, bgX, bgY, bgSize, bgSize, Math.round(bgSize * 0.065));
   ctx.fill();
   ctx.restore();
 

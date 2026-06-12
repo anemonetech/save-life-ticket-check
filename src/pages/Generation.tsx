@@ -921,6 +921,18 @@ function ExistingBatches() {
     setReadyDownloads(readyDownloadsRef.current);
   }
 
+  function trackBatchLoadProgress(batch: Batch, title: string, loaded: number) {
+    const done = Math.min(loaded, batch.count);
+    setExportJob({
+      id: batch.id,
+      title,
+      label: "Chargement des billets",
+      done,
+      total: batch.count,
+      percent: batch.count ? Math.round((done / batch.count) * 100) : 0,
+    });
+  }
+
   async function open(batch: Batch) {
     if (openId === batch.id) {
       setOpenId(null);
@@ -967,7 +979,9 @@ function ExistingBatches() {
     });
     try {
       await withScreenWakeLock(async () => {
-        const list = await getTicketsByBatch(batch.id);
+        const list = await getTicketsByBatch(batch.id, (loaded) =>
+          trackBatchLoadProgress(batch, title, loaded),
+        );
         await downloadBatchPdf(list, batch.name, (p) =>
           trackBatchExportProgress(batch.id, title, p),
         );
@@ -991,7 +1005,9 @@ function ExistingBatches() {
     const fn = kind === "png" ? downloadBatchZipPng : downloadBatchZipPdf;
     try {
       await withScreenWakeLock(async () => {
-        const list = await getTicketsByBatch(batch.id);
+        const list = await getTicketsByBatch(batch.id, (loaded) =>
+          trackBatchLoadProgress(batch, title, loaded),
+        );
         await fn(list, batch.name, (p) =>
           trackBatchExportProgress(batch.id, title, p),
         );
